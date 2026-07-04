@@ -1,0 +1,507 @@
+{
+  "info": {
+    "name": "PrepSense API",
+    "_postman_id": "b1a2c3d4-e5f6-4789-9abc-def012345678",
+    "description": "Multi-tenant exam & interview prep platform.\n\n## Getting started\n1. Import this collection **and** `PrepSense.postman_environment.json`, then select the *PrepSense (Local)* environment.\n2. Seed demo data on the backend: `make seed` (or `python manage.py seed_demo`). All demo users share the password `Prep@1234`.\n3. Run **Auth → Login** — the test script auto-saves `access_token` and `refresh_token` into the environment, and every other request inherits Bearer auth from the collection.\n\n## Roles (which login to use)\n- `teacher@springfield.demo` — TEACHER: upload materials, generate questions, view all learners.\n- `homer@springfield.demo` — STUDENT: practice, submit attempts.\n- `parent@springfield.demo` — PARENT: view linked learner only.\n- `admin@springfield.demo` — ORG_ADMIN: user management.\n- `mentor@acme.demo` / `dana@acme.demo` — INTERVIEW-mode mentor / candidate.\n\nSwitch the `email` env var to change who logs in. Tenant is carried in the JWT — you never send a tenant id.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{access_token}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000" }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "pm.test('login ok', () => pm.expect(res.status).to.be.true);",
+                  "if (res.data) {",
+                  "  pm.environment.set('access_token', res.data.access);",
+                  "  pm.environment.set('refresh_token', res.data.refresh);",
+                  "  console.log('Saved tokens for', res.data.email, '(' + res.data.role + ')');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login", ""]
+            },
+            "description": "POST email + password. Returns `{access, refresh, role, tenant_id, email, full_name}` inside the `data` envelope. The test script stores the tokens automatically."
+          }
+        },
+        {
+          "name": "Refresh token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.data && res.data.access) {",
+                  "  pm.environment.set('access_token', res.data.access);",
+                  "  console.log('Access token refreshed');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/refresh/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "refresh", ""]
+            },
+            "description": "Exchange the refresh token for a fresh access token."
+          }
+        },
+        {
+          "name": "Me (current user)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/auth/me/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "me", ""]
+            },
+            "description": "Profile of the authenticated user (decoded from the access token)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users (ORG_ADMIN)",
+      "description": "User management, scoped to the admin's own tenant. Requires an ORG_ADMIN login (e.g. admin@springfield.demo).",
+      "item": [
+        {
+          "name": "List users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/users/?page=1&page_size=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", ""],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "10" },
+                { "key": "role", "value": "STUDENT", "disabled": true },
+                { "key": "is_active", "value": "true", "disabled": true },
+                { "key": "search", "value": "homer", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create user",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"newstudent@springfield.demo\",\n  \"full_name\": \"New Student\",\n  \"role\": \"STUDENT\",\n  \"password\": \"Prep@1234\",\n  \"linked_learner\": null\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/users/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", ""]
+            },
+            "description": "`organization` is NOT accepted — the new user always lands in the admin's tenant. `linked_learner` is only for observer roles (PARENT) and must be a learner in the same tenant."
+          }
+        },
+        {
+          "name": "Retrieve user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/users/{{user_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "{{user_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "Update user",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Updated Name\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/users/{{user_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "{{user_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "Deactivate user",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/users/{{user_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "{{user_id}}", ""]
+            },
+            "description": "Soft-deactivates (sets is_active=False) rather than hard-deleting."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Materials (TEACHER / MENTOR / ORG_ADMIN)",
+      "description": "Upload source material; ingestion (parse → chunk → embed) runs async. Requires an uploader role.",
+      "item": [
+        {
+          "name": "List materials",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/materials/?page=1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "materials", ""],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "mode", "value": "EXAM", "disabled": true },
+                { "key": "ingestion_status", "value": "READY", "disabled": true },
+                { "key": "search", "value": "biology", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create material (INTERVIEW / text)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"INTERVIEW\",\n  \"subject_or_role\": \"Backend Engineer\",\n  \"topic\": \"System Design\",\n  \"source_text\": \"The backend engineer designs scalable services: API design, database schema design, caching, rate limiting, and handling high throughput with reliability and observability.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/materials/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "materials", ""]
+            },
+            "description": "INTERVIEW mode requires `source_text` (a job description / role text) or a file. Tenant + uploader are set server-side."
+          }
+        },
+        {
+          "name": "Create material (EXAM / PDF upload)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "mode", "value": "EXAM", "type": "text" },
+                { "key": "subject_or_role", "value": "Biology", "type": "text" },
+                { "key": "topic", "value": "Cell Biology", "type": "text" },
+                { "key": "file", "type": "file", "src": [] }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/materials/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "materials", ""]
+            },
+            "description": "EXAM mode requires an uploaded PDF. Attach a file to the `file` field (multipart/form-data — do NOT set Content-Type manually; Postman adds the boundary)."
+          }
+        },
+        {
+          "name": "Retrieve material",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/materials/{{material_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "materials", "{{material_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "Generate questions",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"count\": 5,\n  \"category\": \"TECHNICAL\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/materials/{{material_id}}/generate/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "materials", "{{material_id}}", "generate", ""]
+            },
+            "description": "Trigger grounded generation for a READY material (async → 202). Body all optional: `count` (1–20), `difficulty` (EASY|MEDIUM|HARD, exam) or `category` (BEHAVIORAL|TECHNICAL, interview). Per-tenant daily LLM cap applies."
+          }
+        },
+        {
+          "name": "Delete material",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/materials/{{material_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "materials", "{{material_id}}", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Questions",
+      "item": [
+        {
+          "name": "List questions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/questions/?page=1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "questions", ""],
+              "query": [{ "key": "page", "value": "1" }]
+            }
+          }
+        },
+        {
+          "name": "Create question (manual)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source_material\": {{material_id}},\n  \"topic_or_category\": \"System Design\",\n  \"category\": \"TECHNICAL\",\n  \"question_text\": \"How would you design a rate limiter for a high-throughput API?\",\n  \"reference_answer\": \"Discuss token-bucket/leaky-bucket, per-tenant keys, distributed counters in Redis, and graceful 429 handling.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/questions/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "questions", ""]
+            },
+            "description": "`mode` is derived from the material, never sent. EXAM materials require `difficulty`; INTERVIEW materials require `category`."
+          }
+        },
+        {
+          "name": "Retrieve question",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/questions/{{question_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "questions", "{{question_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "Delete question",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/questions/{{question_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "questions", "{{question_id}}", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Practice (STUDENT / CANDIDATE)",
+      "description": "Learner-facing loop. The reference answer is never returned to the learner. Requires a learner login (e.g. homer@springfield.demo).",
+      "item": [
+        {
+          "name": "Next question",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/practice/next/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "practice", "next", ""],
+              "query": [
+                { "key": "material", "value": "{{material_id}}", "disabled": true },
+                { "key": "topic", "value": "System Design", "disabled": true }
+              ]
+            },
+            "description": "The next question the learner hasn't attempted yet. Optional `material` / `topic` filters."
+          }
+        },
+        {
+          "name": "Refresh (generate a new one)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"material\": {{material_id}},\n  \"category\": \"TECHNICAL\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/practice/refresh/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "practice", "refresh", ""]
+            },
+            "description": "Generate a fresh, deduped question on the same material. `material` required; `topic`/`difficulty`/`category` optional. Per-tenant LLM cap applies."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Attempts",
+      "item": [
+        {
+          "name": "List attempts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/attempts/?page=1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "attempts", ""],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "learner", "value": "{{learner_id}}", "disabled": true },
+                { "key": "question", "value": "{{question_id}}", "disabled": true },
+                { "key": "score", "value": "80", "disabled": true },
+                { "key": "search", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Learners see only their own attempts; observers (teacher/mentor/org-admin) see all in the tenant; a parent sees only their linked learner."
+          }
+        },
+        {
+          "name": "Submit attempt",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": {{question_id}},\n  \"submitted_answer\": \"A rate limiter caps requests per client using a token bucket backed by Redis, returning 429 when exceeded.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/attempts/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "attempts", ""]
+            },
+            "description": "Only learners may submit. Grading is async — the response returns the ungraded attempt; poll `Retrieve attempt` for score/feedback."
+          }
+        },
+        {
+          "name": "Retrieve attempt",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/attempts/{{attempt_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "attempts", "{{attempt_id}}", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reports",
+      "item": [
+        {
+          "name": "Observer dashboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/reports/dashboard/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "reports", "dashboard", ""]
+            },
+            "description": "Tenant-wide progress aggregation for observers (teacher/mentor/org-admin)."
+          }
+        },
+        {
+          "name": "Learner report",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/reports/learner/{{learner_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "reports", "learner", "{{learner_id}}", ""]
+            },
+            "description": "Per-learner report: strong / weak / untested topics. A learner may view their own; observers may view learners in their tenant."
+          }
+        }
+      ]
+    },
+    {
+      "name": "System",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{base_url}}/healthz/",
+              "host": ["{{base_url}}"],
+              "path": ["healthz", ""]
+            },
+            "description": "Liveness/readiness probe. 200 `{status:ok, database:up}` when healthy; 503 if the DB is unreachable."
+          }
+        },
+        {
+          "name": "OpenAPI schema",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/schema/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "schema", ""]
+            },
+            "description": "Downloadable OpenAPI 3 schema (drf-spectacular). Browsable docs live at /api/docs/."
+          }
+        }
+      ]
+    }
+  ]
+}

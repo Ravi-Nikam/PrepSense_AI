@@ -1,0 +1,63 @@
+# PrepSense — production-style stack.
+#   postgres (pgvector) · redis · web (gunicorn) · worker (celery) · frontend (nginx)
+# Copy backend/.env.example -> backend/.env and set production values first
+# (DJANGO_DEBUG=False, a real DJANGO_SECRET_KEY, DATABASE_URL, real LLM keys...).
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: prepcheck
+      POSTGRES_PASSWORD: prepcheck
+      POSTGRES_DB: prepcheck
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U prepcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+
+  web:
+    build: ./backend
+    # entrypoint runs migrations, then gunicorn (the image's CMD) starts.
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz/').status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build: ./backend
+    # Bypass the migrate entrypoint (web handles migrations); just run the worker.
+    entrypoint: ["celery", "-A", "prepcheck", "worker", "-l", "info"]
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      web:
+        condition: service_started
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - web
+    ports:
+      - "8080:80"
+
+volumes:
+  pgdata:

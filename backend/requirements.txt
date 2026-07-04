@@ -1,0 +1,29 @@
+# --- Core ---
+Django==5.1.4
+djangorestframework==3.15.2
+djangorestframework-simplejwt==5.3.1
+django-filter==24.3
+django-environ==0.11.2
+psycopg[binary]==3.2.3
+pgvector==0.3.6
+
+# --- Serving (production) ---
+gunicorn==23.0.0
+whitenoise==6.8.2
+
+# --- Async / background ---
+celery==5.4.0
+redis==5.2.1
+
+# --- API docs ---
+drf-spectacular==0.28.0
+
+# --- LLM + ingestion ---
+anthropic==0.42.0
+google-genai==1.9.0
+pypdf==5.1.0
+
+# --- Dev / test ---
+pytest==8.3.4
+pytest-django==4.9.0
+factory-boy==3.3.1
